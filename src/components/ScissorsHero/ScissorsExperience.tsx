@@ -14,8 +14,7 @@ const START_X = -8.5; // Início fora da tela à esquerda
 const END_X = 8.5; // Fim fora da tela à direita
 const CUTS_COUNT = 2.2; // Quantidade harmônica de cortes na travessia
 
-// Configurações do modo background
-const BG_POS_X = 1.2;
+// Configurações do modo background (posicionada na lateral limpa da tela)
 const BG_ROT_Y = 0.35;
 const BG_ROT_Z = -Math.PI / 2;
 
@@ -37,6 +36,7 @@ interface ScissorsModelSceneProps {
   onCutComplete: () => void;
   scrollRef: RefObject<number>;
   materialsRef: React.MutableRefObject<THREE.MeshStandardMaterial[]>;
+  isMobile?: boolean;
 }
 
 function ScissorsModelScene({
@@ -45,6 +45,7 @@ function ScissorsModelScene({
   onCutComplete,
   scrollRef,
   materialsRef,
+  isMobile,
 }: ScissorsModelSceneProps) {
   const groupRef = useRef<THREE.Group>(null);
   const { scene, animations } = useGLTF("/scissors.glb");
@@ -196,16 +197,18 @@ function ScissorsModelScene({
       const transT = Math.min((elapsedTime - transitionStartRef.current) / transDuration, 1);
       const ease = 0.5 * (1 - Math.cos(transT * Math.PI)); // easeInOut
 
+      const bgPosX = isMobile ? 0.35 : 1.85;
+
       // Interpolação de posição, rotação e escala
-      group.position.x = THREE.MathUtils.lerp(END_X, BG_POS_X, ease);
+      group.position.x = THREE.MathUtils.lerp(END_X, bgPosX, ease);
       group.position.y = THREE.MathUtils.lerp(0, 0, ease);
       group.rotation.x = THREE.MathUtils.lerp(1.5, 0, ease);
       group.rotation.y = THREE.MathUtils.lerp(0.0, BG_ROT_Y, ease);
       group.rotation.z = THREE.MathUtils.lerp(-Math.PI / 2 - 0.2, BG_ROT_Z, ease);
-      group.scale.setScalar(THREE.MathUtils.lerp(1.4, 1.35, ease));
+      group.scale.setScalar(THREE.MathUtils.lerp(1.4, isMobile ? 1.15 : 1.35, ease));
 
-      // Mantém a tesoura visível e reluzente no fundo com brilho metálico
-      const targetOpacity = THREE.MathUtils.lerp(1.0, 0.55, ease);
+      // Transição para marca d'água 3D reluzente metálica no fundo (38% de opacidade)
+      const targetOpacity = THREE.MathUtils.lerp(1.0, 0.38, ease);
       materialsRef.current.forEach((mat) => {
         mat.opacity = targetOpacity;
       });
@@ -214,15 +217,21 @@ function ScissorsModelScene({
     // ── FASE 3: MODO BACKGROUND (RESPONSIVO AO SCROLL) ──────────────────────
     else if (phase === "background") {
       const scroll = scrollRef.current || 0;
+      const bgPosX = isMobile ? 0.35 : 1.85;
+
+      // Mantém presença metálica visível (38% de opacidade)
+      materialsRef.current.forEach((mat) => {
+        if (mat.opacity !== 0.38) mat.opacity = 0.38;
+      });
 
       // Resposta ao scroll e flutuação antigravitacional contínua
       group.position.y = Math.sin(elapsedTime * 0.8) * 0.1 - scroll * 1.5;
-      group.position.x = BG_POS_X + Math.cos(elapsedTime * 0.6) * 0.1;
+      group.position.x = bgPosX + Math.cos(elapsedTime * 0.6) * 0.1;
       group.position.z = 0;
       group.rotation.y = BG_ROT_Y + scroll * 0.4;
       group.rotation.x = Math.sin(elapsedTime * 0.5) * 0.05;
       group.rotation.z = BG_ROT_Z;
-      group.scale.setScalar(1.35);
+      group.scale.setScalar(isMobile ? 1.15 : 1.35);
 
       if (act && mixer) {
         const halfDuration = act.getClip().duration / 2;
@@ -388,7 +397,7 @@ export function ScissorsExperience() {
         style={{
           position: "fixed",
           inset: 0,
-          zIndex: phase === "background" ? 1 : 45,
+          zIndex: phase === "background" ? 0 : 45,
           pointerEvents: "none",
         }}
       >
@@ -419,6 +428,7 @@ export function ScissorsExperience() {
               onCutComplete={handleCutComplete}
               scrollRef={scrollRef}
               materialsRef={materialsRef}
+              isMobile={isMobile}
             />
           </Suspense>
         </Canvas>

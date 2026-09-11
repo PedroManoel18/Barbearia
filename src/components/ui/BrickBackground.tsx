@@ -2,7 +2,7 @@ export function BrickBackground() {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none fixed inset-0 z-0 overflow-hidden"
+      className="pointer-events-none fixed inset-0 -z-10 overflow-hidden"
     >
       {/* 1. Base em Branco Puro */}
       <div className="absolute inset-0 bg-white" />

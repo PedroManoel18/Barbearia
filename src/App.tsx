@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MapPin,
@@ -13,25 +13,22 @@ import {
   ChevronDown,
   Phone,
   ExternalLink,
+  Lock,
+  Calendar,
 } from "lucide-react";
-import {
-  services,
-  team,
-  reviews,
-  hours,
-  faqs,
-  address,
-  phone,
-  whatsappLink,
-  getTodayStatus,
-  mapsLink,
-  telLink,
-} from "@/components/demo/data";
+import { InstagramIcon } from "@/components/ui/Icons";
+import { DataProvider, useData } from "@/context/DataContext";
+import { faqs, reviews } from "@/components/demo/data";
 import heroImg from "@/assets/demo2-hero.png";
 import logoImg from "@/assets/logo.jpg";
 import { ScissorsExperience } from "@/components/ScissorsHero/ScissorsExperience";
 import { BrickBackground } from "@/components/ui/BrickBackground";
 import { FloatingWhatsApp } from "@/components/ui/FloatingWhatsApp";
+import { GallerySection } from "@/components/ui/GallerySection";
+import { AppointmentModal } from "@/components/ui/AppointmentModal";
+import { PrivacyPolicyModal } from "@/components/ui/PrivacyPolicyModal";
+import { AdminAuth } from "@/components/admin/AdminAuth";
+import { AdminDashboard } from "@/components/admin/AdminDashboard";
 
 // Variantes de Animação com Física de Mola Orgânica (Estilo Anime.js)
 const staggerContainer = {
@@ -58,9 +55,92 @@ const fadeUpSpring = {
   },
 };
 
-export default function App() {
-  const [status] = useState(() => getTodayStatus());
+function MainSite() {
+  const {
+    services,
+    team,
+    hours,
+    businessInfo,
+    storeStatus,
+    whatsappLink,
+    mapsLink,
+    telLink,
+    isAdminLoggedIn,
+  } = useData();
+
   const [openFaq, setOpenFaq] = useState<number | null>(0);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isAdminOpen, setIsAdminOpen] = useState(false);
+  const [isAppointmentOpen, setIsAppointmentOpen] = useState(false);
+  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
+  const [selectedServiceId, setSelectedServiceId] = useState<string | undefined>();
+
+  // Atalho de Teclado Seguro para o Dono / Administrador (Alt + A ou Ctrl + Shift + A)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.altKey && e.key.toLowerCase() === "a") || (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "a")) {
+        e.preventDefault();
+        if (isAdminLoggedIn) {
+          setIsAdminOpen((prev) => !prev);
+        } else {
+          setIsAuthOpen((prev) => !prev);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isAdminLoggedIn]);
+
+  // Acesso direto via Celular por URL (?admin=true ou #admin)
+  useEffect(() => {
+    const checkAdminUrl = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get("admin") === "true" || window.location.hash === "#admin") {
+        if (isAdminLoggedIn) {
+          setIsAdminOpen(true);
+        } else {
+          setIsAuthOpen(true);
+        }
+      }
+    };
+    checkAdminUrl();
+    window.addEventListener("hashchange", checkAdminUrl);
+    return () => window.removeEventListener("hashchange", checkAdminUrl);
+  }, [isAdminLoggedIn]);
+
+  const handleAdminTrigger = useCallback(() => {
+    if (isAdminLoggedIn) {
+      setIsAdminOpen(true);
+    } else {
+      setIsAuthOpen(true);
+    }
+  }, [isAdminLoggedIn]);
+
+  // Gesto Secreto Mobile: 3 toques rápidos consecutivos no logotipo
+  const tapCountRef = useRef<number>(0);
+  const lastTapTimeRef = useRef<number>(0);
+
+  const handleLogoTap = useCallback(() => {
+    const now = Date.now();
+    if (now - lastTapTimeRef.current < 650) {
+      tapCountRef.current += 1;
+    } else {
+      tapCountRef.current = 1;
+    }
+    lastTapTimeRef.current = now;
+
+    if (tapCountRef.current === 3) {
+      tapCountRef.current = 0;
+      handleAdminTrigger();
+    }
+  }, [handleAdminTrigger]);
+
+  const activeServices = services.filter((s) => s.active);
+
+  const handleOpenAppointment = (serviceId?: string) => {
+    setSelectedServiceId(serviceId);
+    setIsAppointmentOpen(true);
+  };
 
   return (
     <div className="relative min-h-screen bg-white text-slate-900 selection:bg-emerald-400 selection:text-slate-950">
@@ -86,14 +166,20 @@ export default function App() {
         aria-label="Atalhos rápidos para dispositivos móveis"
         className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200/80 bg-white/85 px-4 py-2.5 backdrop-blur-xl lg:hidden"
       >
-        <div className="flex items-center gap-2">
+        <div
+          onClick={handleLogoTap}
+          role="button"
+          tabIndex={0}
+          className="flex items-center gap-2 cursor-pointer select-none active:scale-95 transition-transform"
+          title="Toque 3 vezes para acesso administrativo"
+        >
           <img
             src={logoImg}
-            alt="Logo BarberShop Garage"
+            alt={`Logo ${businessInfo.name}`}
             className="size-8 rounded-lg object-cover border border-emerald-500/30 shadow-sm"
           />
           <span className="font-display text-xs font-black tracking-tight text-slate-950">
-            BarberShop Garage
+            {businessInfo.name}
           </span>
         </div>
 
@@ -111,92 +197,104 @@ export default function App() {
             Equipe
           </a>
           <a
+            href="#galeria"
+            className="touch-target rounded-full bg-slate-100 px-3 py-1.5 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
+          >
+            Galeria
+          </a>
+          <a
             href="#horarios"
             className="touch-target rounded-full bg-slate-100 px-3 py-1.5 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
           >
             Horários
           </a>
-          <a
-            href={whatsappLink()}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="touch-target inline-flex items-center gap-1 rounded-full bg-emerald-500 px-3 py-1.5 text-slate-950 font-black shadow-sm transition-transform active:scale-95"
-            aria-label="Agendar no WhatsApp agora (abre em nova aba)"
+          <button
+            onClick={() => handleOpenAppointment()}
+            className="touch-target rounded-full bg-emerald-500 px-3 py-1.5 text-slate-950 font-black shadow-sm"
           >
-            <span>Agendar</span>
-            <ArrowRight className="size-3" aria-hidden="true" />
-          </a>
+            Agendar
+          </button>
         </div>
       </nav>
 
-      {/* ── ESTRUTURA PRINCIPAL: GRID ASSIMÉTRICO RESPONSIVO ───────────────── */}
-      <div className="container-page relative z-10 lg:grid lg:grid-cols-[22rem_1fr] lg:gap-14 xl:grid-cols-[24rem_1fr]">
-        {/* ── COLUNA FIXA / ASIDE (Sidebar Estúdio Streetwear) ──────────────── */}
+      {/* ── LAYOUT PRINCIPAL: Sidebar Fixa Desktop + Conteúdo Rolável ───────── */}
+      <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:grid lg:grid-cols-[380px_1fr] lg:gap-12 lg:px-8 xl:grid-cols-[420px_1fr]">
+        {/* ── SIDEBAR FIXA (DESKTOP) / CARD COMPACTO (MOBILE) ────────────────── */}
         <aside
-          aria-label="Identidade da barbearia e agendamento rápido"
-          className="py-6 lg:sticky lg:top-0 lg:h-screen lg:py-10"
+          aria-label="Informações da barbearia e contato"
+          className="py-6 sm:py-8 lg:sticky lg:top-8 lg:h-[calc(100vh-4rem)] lg:py-10"
         >
-          <div className="flex h-full flex-col justify-between rounded-3xl border border-slate-200/80 bg-white/80 p-5 shadow-studio backdrop-blur-xl sm:p-6 xl:p-7">
+          <div className="glass-card flex h-full flex-col justify-between rounded-3xl p-6 sm:p-8">
             <div>
-              {/* Header com Logo e Identidade da Marca */}
-              <div className="flex items-center gap-4">
-                <div className="relative shrink-0">
+              {/* Header da Marca: Logo + Título */}
+              <div
+                onClick={handleLogoTap}
+                role="button"
+                tabIndex={0}
+                className="flex items-center gap-3.5 cursor-pointer select-none group"
+                title="Toque 3 vezes para acesso administrativo"
+              >
+                <div className="relative">
                   <img
                     src={logoImg}
-                    alt="Logo oficial da BarberShop Garage com ícone de navalha vintage"
-                    className="size-16 rounded-2xl border-2 border-emerald-500/30 object-cover shadow-md"
+                    alt={`Logo oficial da ${businessInfo.name}`}
+                    className="size-13 rounded-2xl object-cover border-2 border-slate-900/10 shadow-md"
                   />
-                  <span
-                    className="absolute -bottom-1 -right-1 flex size-4 items-center justify-center rounded-full bg-slate-950 text-[9px] text-emerald-400"
-                    aria-hidden="true"
+                  <div
+                    className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full bg-emerald-500 text-[10px] text-slate-950 font-black"
+                    title="Verificado e Autêntico"
                   >
-                    ★
-                  </span>
+                    ✓
+                  </div>
                 </div>
+
                 <div>
-                  <span className="text-[11px] font-black uppercase tracking-widest text-emerald-600">
-                    Est. 2016 · Streetwear
-                  </span>
-                  <h1 className="font-display text-xl font-extrabold tracking-tight text-slate-950 sm:text-2xl">
-                    BarberShop Garage
+                  <h1 className="font-display text-xl sm:text-2xl font-black tracking-tight text-slate-950">
+                    {businessInfo.name}
                   </h1>
+                  <p className="text-[11px] font-bold tracking-widest uppercase text-emerald-600">
+                    EST. 2026 · SÃO PAULO
+                  </p>
                 </div>
               </div>
 
-              {/* Fotografia em Destaque: Fade Moderno (exibida no desktop) */}
-              <div className="group relative mt-6 hidden overflow-hidden rounded-2xl border border-slate-200 shadow-md lg:block">
+              {/* Hero Image / Imagem de Destaque Urbana */}
+              <div className="mt-6 relative aspect-4/3 w-full overflow-hidden rounded-2xl border border-slate-200/80 shadow-studio">
                 <img
                   src={heroImg}
-                  alt="Corte de cabelo moderno estilo fade com finalização precisa realizado na BarberShop Garage"
-                  className="aspect-4/5 w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  alt="Interior da Barbearia com iluminação de estúdio"
+                  className="size-full object-cover object-center transition-transform duration-700 hover:scale-105"
+                  loading="eager"
                 />
                 <div
-                  className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent"
+                  className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent"
                   aria-hidden="true"
                 />
-                <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-xs text-white">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-2.5 py-1 font-semibold backdrop-blur-md">
-                    <Scissors className="size-3 text-emerald-400" aria-hidden="true" />
-                    Fade & Freestyle
+                <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-white">
+                  <span className="text-[11px] font-bold tracking-wider uppercase backdrop-blur-md bg-black/40 px-2.5 py-1 rounded-full border border-white/10">
+                    Atendimento de Estúdio
                   </span>
-                  <span className="font-mono text-[11px] text-emerald-400 font-bold">
-                    PREMIUM CUTS
-                  </span>
+                  <div className="flex items-center gap-1 text-amber-400 text-xs font-bold bg-black/40 px-2 py-1 rounded-full backdrop-blur-md">
+                    <Star className="size-3 fill-current" aria-hidden="true" />
+                    <span>4.9 (500+ reviews)</span>
+                  </div>
                 </div>
               </div>
 
-              {/* Informações Semânticas de Localização, Telefone e Status */}
-              <div className="mt-6 space-y-2.5 text-xs text-slate-600">
-                {/* Endereço com Link Semântico para Google Maps */}
+              {/* Cartões Rápidos de Informação com Links Semânticos */}
+              <div className="mt-6 space-y-2.5 text-xs">
+                {/* Endereço com Link Direto do Maps */}
                 <a
                   href={mapsLink}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-start gap-3 rounded-xl bg-slate-50/80 p-3 border border-slate-100 transition-colors hover:bg-emerald-50 hover:text-emerald-900 group"
-                  aria-label={`Ver endereço no Google Maps: ${address} (abre em nova aba)`}
+                  className="group flex items-center gap-3 rounded-xl bg-slate-50/80 p-3 border border-slate-100 transition-colors hover:bg-emerald-50 hover:text-emerald-900"
+                  aria-label={`Ver endereço no Google Maps: ${businessInfo.address} (abre em nova aba)`}
                 >
-                  <MapPin className="size-4 shrink-0 text-emerald-600 mt-0.5" aria-hidden="true" />
-                  <span className="leading-snug">{address}</span>
+                  <MapPin className="size-4 shrink-0 text-emerald-600" aria-hidden="true" />
+                  <span className="line-clamp-1 font-medium text-slate-700 group-hover:text-emerald-950">
+                    {businessInfo.address}
+                  </span>
                   <ExternalLink
                     className="size-3 ml-auto opacity-0 transition-opacity group-hover:opacity-100 text-emerald-600"
                     aria-hidden="true"
@@ -207,10 +305,10 @@ export default function App() {
                 <a
                   href={telLink}
                   className="flex items-center gap-3 rounded-xl bg-slate-50/80 p-3 border border-slate-100 transition-colors hover:bg-emerald-50 hover:text-emerald-900"
-                  aria-label={`Ligar para a barbearia no número ${phone}`}
+                  aria-label={`Ligar para a barbearia no número ${businessInfo.phone}`}
                 >
                   <Phone className="size-4 shrink-0 text-emerald-600" aria-hidden="true" />
-                  <span className="font-semibold text-slate-800">{phone}</span>
+                  <span className="font-semibold text-slate-800">{businessInfo.phone}</span>
                 </a>
 
                 {/* Status Ao Vivo com ARIA Live Region */}
@@ -221,7 +319,7 @@ export default function App() {
                 >
                   <div className="flex items-center gap-2">
                     <span className="relative flex size-2.5" aria-hidden="true">
-                      {status.isOpen ? (
+                      {storeStatus.isOpen ? (
                         <>
                           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                           <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
@@ -230,29 +328,26 @@ export default function App() {
                         <span className="relative inline-flex size-2.5 rounded-full bg-amber-500" />
                       )}
                     </span>
-                    <span className="font-semibold text-slate-800">{status.label}</span>
+                    <span className="font-semibold text-slate-800">{storeStatus.label}</span>
                   </div>
-                  <span className="text-[11px] text-slate-500 font-medium">{status.detail}</span>
+                  <span className="text-[11px] text-slate-500 font-medium">{storeStatus.detail}</span>
                 </div>
               </div>
             </div>
 
             {/* Ação Primária da Sidebar: Agendamento Direto */}
-            <div className="mt-6 pt-2">
-              <motion.a
-                href={whatsappLink()}
-                target="_blank"
-                rel="noopener noreferrer"
-                whileHover={{ scale: 1.02, y: -2 }}
-                whileTap={{ scale: 0.97 }}
+            <div className="mt-6 pt-2 space-y-2">
+              <button
+                type="button"
+                onClick={() => handleOpenAppointment()}
                 className="group flex w-full min-h-[48px] items-center justify-center gap-2.5 rounded-xl bg-slate-950 px-6 py-3.5 font-bold text-white shadow-lg transition-all duration-300 hover:bg-emerald-500 hover:text-slate-950 hover:shadow-neon-glow"
-                aria-label="Agendar horário no WhatsApp da BarberShop Garage (abre em nova aba)"
               >
-                <span>Agendar Horário</span>
+                <Calendar className="size-4" />
+                <span>Agendar Horário Online</span>
                 <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" aria-hidden="true" />
-              </motion.a>
-              <p className="mt-2 text-center text-[11px] font-medium text-slate-500">
-                ⚡ Resposta em menos de 5 minutos
+              </button>
+              <p className="text-center text-[11px] font-medium text-slate-500">
+                ⚡ Resposta no WhatsApp em menos de 5 minutos
               </p>
             </div>
           </div>
@@ -269,7 +364,7 @@ export default function App() {
             >
               <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-3.5 py-1.5 text-xs font-bold tracking-wider text-slate-800 shadow-sm backdrop-blur-md">
                 <Sparkles className="size-3.5 text-emerald-500" aria-hidden="true" />
-                <span>VINTAGE HYPE // O NOVO CLÁSSICO</span>
+                <span>{businessInfo.tagline}</span>
               </div>
 
               <h2
@@ -320,7 +415,7 @@ export default function App() {
                 </h3>
               </div>
               <p className="text-xs text-slate-500">
-                Toque no serviço para agendar direto pelo WhatsApp
+                Toque no botão para agendar direto pelo WhatsApp ou personalizar
               </p>
             </div>
 
@@ -331,9 +426,9 @@ export default function App() {
               viewport={{ once: true, margin: "-40px" }}
               className="mt-8 grid gap-4 sm:grid-cols-2 sm:gap-5"
             >
-              {services.map((s) => (
+              {activeServices.map((s) => (
                 <motion.div
-                  key={s.name}
+                  key={s.id}
                   variants={fadeUpSpring}
                   whileHover={{ y: -4 }}
                   className={`glass-card group relative flex flex-col justify-between rounded-2xl p-5 sm:p-6 ${
@@ -377,18 +472,28 @@ export default function App() {
                     <span className="text-[11px] font-medium text-slate-400">
                       Vagas para esta semana
                     </span>
-                    <motion.a
-                      href={whatsappLink(s.name)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      className="touch-target inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-emerald-500 hover:text-slate-950"
-                      aria-label={`Agendar serviço de ${s.name} por ${s.price} no WhatsApp (abre em nova aba)`}
-                    >
-                      <span>Agendar</span>
-                      <ArrowRight className="size-3.5" aria-hidden="true" />
-                    </motion.a>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAppointment(s.id)}
+                        className="touch-target rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                        title="Personalizar dia e barbeiro"
+                      >
+                        Personalizar
+                      </button>
+                      <motion.a
+                        href={whatsappLink(s.name)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        className="touch-target inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-emerald-500 hover:text-slate-950"
+                        aria-label={`Agendar serviço de ${s.name} por ${s.price} no WhatsApp (abre em nova aba)`}
+                      >
+                        <span>Agendar</span>
+                        <ArrowRight className="size-3.5" aria-hidden="true" />
+                      </motion.a>
+                    </div>
                   </div>
                 </motion.div>
               ))}
@@ -418,27 +523,62 @@ export default function App() {
             >
               {team.map((m) => (
                 <motion.div
-                  key={m.name}
+                  key={m.id}
                   variants={fadeUpSpring}
                   whileHover={{ y: -4 }}
-                  className="glass-card flex flex-col items-center rounded-2xl p-6 text-center"
+                  className={`glass-card flex flex-col items-center rounded-2xl p-6 text-center transition-all ${
+                    !m.available ? "opacity-60" : ""
+                  }`}
                 >
-                  <div
-                    className="relative mb-4 flex size-18 items-center justify-center rounded-2xl bg-gradient-to-tr from-slate-900 to-slate-700 font-display text-xl font-black text-emerald-400 shadow-md"
-                    aria-hidden="true"
-                  >
-                    {m.initials}
-                    <span className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full bg-emerald-500 text-[10px] text-slate-950 font-bold">
-                      ✓
-                    </span>
-                  </div>
+                  {m.photoUrl ? (
+                    <div className="relative mb-4 size-20 overflow-hidden rounded-2xl border-2 border-emerald-500/30 shadow-md">
+                      <img src={m.photoUrl} alt={m.name} className="size-full object-cover" />
+                      <span
+                        className={`absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full text-[10px] font-bold ${
+                          m.available ? "bg-emerald-500 text-slate-950" : "bg-slate-400 text-white"
+                        }`}
+                      >
+                        {m.available ? "✓" : "–"}
+                      </span>
+                    </div>
+                  ) : (
+                    <div
+                      className="relative mb-4 flex size-18 items-center justify-center rounded-2xl bg-gradient-to-tr from-slate-950 to-slate-700 font-display text-xl font-black text-emerald-400 shadow-md"
+                      aria-hidden="true"
+                    >
+                      {m.initials}
+                      <span
+                        className={`absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full text-[10px] font-bold ${
+                          m.available ? "bg-emerald-500 text-slate-950" : "bg-slate-400 text-white"
+                        }`}
+                      >
+                        {m.available ? "✓" : "–"}
+                      </span>
+                    </div>
+                  )}
+
                   <h4 className="font-display text-base font-bold text-slate-950">{m.name}</h4>
                   <p className="text-xs font-semibold text-emerald-600 mt-0.5">{m.role}</p>
                   <p className="mt-3 text-[11px] leading-relaxed text-slate-500">{m.specialty}</p>
+
+                  {m.instagram && (
+                    <a
+                      href={`https://instagram.com/${m.instagram}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 hover:text-emerald-600 transition-colors"
+                    >
+                      <InstagramIcon className="size-3" />
+                      <span>@{m.instagram}</span>
+                    </a>
+                  )}
                 </motion.div>
               ))}
             </motion.div>
           </section>
+
+          {/* ── SEÇÃO GALERIA DE FOTOS (NOVA) ────────────────────────────────── */}
+          <GallerySection />
 
           {/* ── SEÇÃO AVALIAÇÕES / SOCIAL PROOF ──────────────────────────────── */}
           <section aria-labelledby="reviews-title" className="mt-16 sm:mt-20">
@@ -506,7 +646,7 @@ export default function App() {
               <div className="divide-y divide-slate-100">
                 {hours.map((h) => (
                   <div
-                    key={h.day}
+                    key={h.id}
                     className="flex items-center justify-between py-3.5 text-xs first:pt-0 last:pb-0"
                   >
                     <div className="flex items-center gap-2">
@@ -627,21 +767,18 @@ export default function App() {
               </p>
 
               <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-                <motion.a
-                  href={whatsappLink()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  whileHover={{ scale: 1.04 }}
-                  whileTap={{ scale: 0.96 }}
-                  className="touch-target group flex w-full sm:w-auto items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 px-8 py-4 text-xs font-black text-slate-950 uppercase tracking-wider shadow-neon-glow transition-all"
-                  aria-label="Abrir conversa no WhatsApp para agendamento (abre em nova aba)"
+                <button
+                  type="button"
+                  onClick={() => handleOpenAppointment()}
+                  className="touch-target group flex w-full sm:w-auto items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 px-8 py-4 text-xs font-black text-slate-950 uppercase tracking-wider shadow-neon-glow hover:opacity-95 transition-all"
                 >
-                  <span>Chamar no WhatsApp Agora</span>
+                  <Calendar className="size-4" />
+                  <span>Agendar Horário Online</span>
                   <ArrowRight
                     className="size-4 transition-transform group-hover:translate-x-1"
                     aria-hidden="true"
                   />
-                </motion.a>
+                </button>
               </div>
 
               <div className="mt-6 flex flex-wrap items-center justify-center gap-4 sm:gap-6 text-[11px] text-slate-400 font-medium">
@@ -652,15 +789,16 @@ export default function App() {
             </div>
           </section>
 
-          {/* ── FOOTER ──────────────────────────────────────────────────────── */}
+          {/* ── FOOTER COM LINKS SEMÂNTICOS, PRIVACIDADE & ACESSO ADMIN ───────── */}
           <footer
             role="contentinfo"
             className="mt-16 sm:mt-20 border-t border-slate-200/80 pt-8 pb-12 text-center text-xs text-slate-500"
           >
             <div className="flex items-center justify-center gap-2 mb-2 font-display text-sm font-bold text-slate-900">
               <Scissors className="size-4 text-emerald-500" aria-hidden="true" />
-              <span>BarberShop Garage</span>
+              <span>{businessInfo.name}</span>
             </div>
+
             <p className="text-slate-600">
               <a
                 href={mapsLink}
@@ -668,20 +806,76 @@ export default function App() {
                 rel="noopener noreferrer"
                 className="hover:text-emerald-700 underline-offset-2 hover:underline"
               >
-                {address}
+                {businessInfo.address}
               </a>{" "}
               ·{" "}
               <a href={telLink} className="hover:text-emerald-700 underline-offset-2 hover:underline">
-                {phone}
+                {businessInfo.phone}
               </a>
             </p>
-            <p className="mt-3 text-[11px] text-slate-400">
-              © {new Date().getFullYear()} BarberShop Garage. Conceito "Vintage Hype: O Novo
+
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-4 text-[11px] text-slate-500">
+              <button
+                onClick={() => setIsPrivacyOpen(true)}
+                className="hover:text-emerald-700 underline-offset-2 hover:underline font-semibold"
+              >
+                Política de Privacidade & LGPD
+              </button>
+              <span>·</span>
+              <button
+                onClick={handleAdminTrigger}
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 transition-colors shadow-sm active:scale-95"
+                title="Atalho: 3 toques no logo, ?admin=true ou Alt + A"
+              >
+                <Lock className="size-3.5 text-slate-500" />
+                <span>Área do Proprietário (Painel Admin)</span>
+              </button>
+            </div>
+
+            <p className="mt-4 text-[11px] text-slate-400">
+              © {new Date().getFullYear()} {businessInfo.name}. Conceito "Vintage Hype: O Novo
               Clássico". Todos os direitos reservados.
             </p>
           </footer>
         </main>
       </div>
+
+      {/* ── MODAIS E PAINEL ADMINISTRATIVO ──────────────────────────────────── */}
+      {isAuthOpen && (
+        <AdminAuth
+          isOpen={isAuthOpen}
+          onClose={() => setIsAuthOpen(false)}
+          onSuccess={() => {
+            setIsAuthOpen(false);
+            setIsAdminOpen(true);
+          }}
+        />
+      )}
+
+      {isAdminOpen && <AdminDashboard onClose={() => setIsAdminOpen(false)} />}
+
+      {isAppointmentOpen && (
+        <AppointmentModal
+          isOpen={isAppointmentOpen}
+          onClose={() => setIsAppointmentOpen(false)}
+          preselectedServiceId={selectedServiceId}
+        />
+      )}
+
+      {isPrivacyOpen && (
+        <PrivacyPolicyModal
+          isOpen={isPrivacyOpen}
+          onClose={() => setIsPrivacyOpen(false)}
+        />
+      )}
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <DataProvider>
+      <MainSite />
+    </DataProvider>
   );
 }
